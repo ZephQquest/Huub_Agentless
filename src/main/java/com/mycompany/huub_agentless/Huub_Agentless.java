@@ -714,7 +714,7 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
 "# OUTPUT FORMAT " +
 "Hanteer strikt de volgende structuur: " +
 
-"Antwoord: [Geef hier het feitelijke antwoord.] " +
+"Antwoord: [Geef hier het feitelijke antwoord, zonder labels zoals BronID of Bron in deze regel.] " +
 
 "BronID: [Noem alleen BRON-nummers, bijv. 2 of 2,5. Indien niet gevonden: N.v.t.] " +
                
@@ -781,7 +781,8 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         if (answerText == null || answerText.isBlank()) {
             answerText = rawAnswer.trim();
         }
-
+        answerText = stripSourceArtifacts(answerText);   
+        
         String bronField = extractField(rawAnswer, "BronID:");
         Set<Integer> citedPages = new LinkedHashSet<>();
         Set<Integer> allCitedPages = new LinkedHashSet<>();
@@ -877,6 +878,18 @@ private boolean isRelevantCitation(String question, String answerText, String ch
         }
 
         return matcher.group(1).trim();   
+    }
+
+        private String stripSourceArtifacts(String answerText) {
+        if (answerText == null) {
+            return "";
+        }
+
+        String cleaned = answerText;
+        cleaned = cleaned.replaceAll("(?is)\\bBronID\\s*:\\s*[^\\n]*", "");
+        cleaned = cleaned.replaceAll("(?is)\\bBron\\s*:\\s*[^\\n]*", "");
+
+        return cleaned.trim();
     }
 
     // ==============================
