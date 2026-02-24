@@ -761,7 +761,7 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
                     .getJSONObject("message")
                     .getString("content");
 
-            String normalizedAnswer = normalizeAnswerWithPageReferences(answer, sourceById);
+            String normalizedAnswer = normalizeAnswerWithPageReferences(question, answer, sourceById);
             conversationHistory.add(new JSONObject().put("role", "user").put("content", question));
             conversationHistory.add(new JSONObject().put("role", "assistant").put("content", normalizedAnswer));
 
@@ -772,7 +772,7 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         }
     }
 
-    private String normalizeAnswerWithPageReferences(String rawAnswer, Map<Integer, Chunk> sourceById) {
+    private String normalizeAnswerWithPageReferences(String question, String rawAnswer, Map<Integer, Chunk> sourceById) {
         if (rawAnswer == null || rawAnswer.isBlank()) {
             return "Antwoord: Ik kan geen antwoord genereren op basis van de aangeleverde context.\nBron: N.v.t.";
         }
@@ -784,21 +784,41 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
 
         String bronField = extractField(rawAnswer, "BronID:");
         Set<Integer> citedPages = new LinkedHashSet<>();
-
+        Set<Integer> allCitedPages = new LinkedHashSet<>();
+        
         if (bronField != null && !bronField.equalsIgnoreCase("N.v.t.")) {
             Matcher matcher = Pattern.compile("\\d+").matcher(bronField);
             while (matcher.find()) {
                 int id = Integer.parseInt(matcher.group());
                 Chunk chunk = sourceById.get(id);
                 if (chunk != null) {
-                    citedPages.add(chunk.page);
+                    allCitedPages.add(chunk.page);
+                    if (isRelevantCitation(question, answerText, chunk.text)) {
+                        citedPages.add(chunk.page);
+                    }
                 }
             }
         }
-     
+     if (citedPages.isEmpty()) {
+            citedPages.addAll(allCitedPages);
+        }
+
+
         String bronText;
         if (citedPages.isEmpty()) {
-            bronText = "N.v.t.";
+            if (looksLikeNoAnswer(answerText)) {
+                bronText = "N.v.t.";
+            } else {
+                sourceById.values().stream()
+                        .limit(2)
+                        .map(chunk -> chunk.page)
+                        .forEach(citedPages::add);
+                bronText = citedPages.isEmpty()
+                        ? "N.v.t."
+                        : "PAGINA " + citedPages.stream()
+                        .map(String::valueOf)
+                        .collect(Collectors.joining(", PAGINA "));
+            }
         } else {
             bronText = "PAGINA " + citedPages.stream()
                     .map(String::valueOf)
@@ -808,6 +828,42 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         return "Antwoord: " + answerText.trim() + "\n"
                 + "Bron: " + bronText;
     }
+private boolean isRelevantCitation(String question, String answerText, String chunkText) {
+        if (chunkText == null || chunkText.isBlank()) {
+            return false;
+        }
+
+        Set<String> questionTokens = tokenize(question == null ? "" : question);
+        Set<String> chunkTokens = tokenize(chunkText);
+
+        int overlap = 0;
+        for (String token : questionTokens) {
+            if (chunkTokens.contains(token)) {
+                overlap++;
+            }
+        }
+
+        if (overlap >= 2 || (questionTokens.size() <= 3 && overlap >= 1)) {
+            return true;
+        }
+
+        return lexicalSimilarity(answerText == null ? "" : answerText, chunkText) >= 0.10;
+    }
+
+
+    private boolean looksLikeNoAnswer(String answerText) {
+        if (answerText == null || answerText.isBlank()) {
+            return true;
+        }
+
+        String normalized = answerText.toLowerCase(Locale.ROOT);
+        return normalized.contains("niet terugvinden")
+                || normalized.contains("niet vinden")
+                || normalized.contains("onvoldoende informatie")
+                || normalized.contains("geen informatie")
+                || normalized.contains("neem contact op met hr");
+    }
+
 
     private String extractField(String text, String label) {
         if (text == null || label == null) {
