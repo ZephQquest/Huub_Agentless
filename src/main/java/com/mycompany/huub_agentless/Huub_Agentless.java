@@ -546,24 +546,21 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
                     || normalized.matches(".*zonder\\s+.{0,35}bonus.*")) {
                 return Optional.of(
                                 "Antwoord: Nee, Talentclass Consultants krijgen geen bonus volgens de personeelsgids.\n" +
-                                "Bron: PAGINA " + chunk.page + ".\n" +
-                                "Agent: HU-B"
+                                "Bron: PAGINA " + chunk.page + "."
                 );
             }
 
             if (normalized.matches(".*krijg.{0,35}bonus.*") || normalized.matches(".*recht\\s+op\\s+.{0,35}bonus.*")) {
                 return Optional.of(
                                 "Antwoord: Ja, volgens de personeelsgids is er een bonusregeling voor Talentclass Consultants.\n" +
-                                "Bron: PAGINA " + chunk.page + ".\n" +
-                                "Agent: HU-B"
+                                "Bron: PAGINA " + chunk.page + "."
                 );
             }
         }
 
         return Optional.of(
                 "Antwoord: Ik kan in de Talentclass-context geen expliciete informatie over een bonusregeling vinden.\n" +
-                        "Bron: N.v.t.\n" +
-                        "Agent: HU-B"
+                        "Bron: N.v.t."
         );
     }
       private Optional<String> buildVerzuimDurationAnswer(String question, List<Chunk> contextChunks) {
@@ -614,15 +611,13 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         if (langdurigVerzuim) {
             return Optional.of(
                     "Antwoord: Ja, als je langer dan twee weken ziek bent, val je onder langdurig verzuim.\n"
-                            + "Bron: " + bron + "\n"
-                            + "Agent: HU-B"
+                            + "Bron: " + bron
             );
         }
 
         return Optional.of(
                 "Antwoord: Nee, bij " + totalDays + " dagen ziekte val je nog niet onder langdurig verzuim, omdat dat pas geldt bij meer dan twee weken. Je moet je wel ziek melden volgens de procedures.\n"
-                        + "Bron: " + bron + "\n"
-                        + "Agent: HU-B"
+                        + "Bron: " + bron
         );
     }   
     private boolean isSalaryQuestion(String query) {
@@ -811,8 +806,7 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         }
 
         return "Antwoord: " + answerText.trim() + "\n"
-                + "Bron: " + bronText + "\n"
-                + "Agent: HU-B";
+                + "Bron: " + bronText;
     }
 
     private String extractField(String text, String label) {
