@@ -547,7 +547,7 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
                 return Optional.of(
                                 "Antwoord: Nee, Talentclass Consultants krijgen geen bonus volgens de personeelsgids.\n" +
                                 "Bron: PAGINA " + chunk.page + ".\n" +
-                                "Agent: HU-B"
+                               
                 );
             }
 
@@ -555,7 +555,7 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
                 return Optional.of(
                                 "Antwoord: Ja, volgens de personeelsgids is er een bonusregeling voor Talentclass Consultants.\n" +
                                 "Bron: PAGINA " + chunk.page + ".\n" +
-                                "Agent: HU-B"
+                                
                 );
             }
         }
@@ -563,7 +563,7 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         return Optional.of(
                 "Antwoord: Ik kan in de Talentclass-context geen expliciete informatie over een bonusregeling vinden.\n" +
                         "Bron: N.v.t.\n" +
-                        "Agent: HU-B"
+                        
         );
     }
          
