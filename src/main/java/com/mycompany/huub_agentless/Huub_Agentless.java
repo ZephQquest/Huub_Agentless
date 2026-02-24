@@ -16,19 +16,6 @@ import static javax.swing.WindowConstants.EXIT_ON_CLOSE;
 
 public class Huub_Agentless extends JFrame {
 
-    static class TopicAgent {
-        String label;
-        String roleInstruction;
-        String routingDescription;
-        List<Double> routingEmbedding;
-
-        TopicAgent(String label, String roleInstruction, String routingDescription) {
-            this.label = label;
-            this.roleInstruction = roleInstruction;
-            this.routingDescription = routingDescription;
-        }
-    }
-   
     // ==============================
     // CONFIGURATIE
     // ==============================
@@ -49,7 +36,6 @@ public class Huub_Agentless extends JFrame {
 
     private final List<JSONObject> conversationHistory = new ArrayList<>();
     private final List<Chunk> chunks = new ArrayList<>();
-    private final List<TopicAgent> topicAgents = new ArrayList<>();
     
     // ==============================
     // DATASTRUCTUUR
@@ -84,7 +70,6 @@ public class Huub_Agentless extends JFrame {
         backgroundImage = new ImageIcon("qquestlogoHoe gaa.png").getImage();
 
         
-//        initializeTopicAgents();
         
         setupChatPanel();
         setupInputPanel();
@@ -202,7 +187,6 @@ public class Huub_Agentless extends JFrame {
                 }
 
                 loadGuide();
-                initializeTopicAgents();
                 knowledgeReady = true;
 
                 SwingUtilities.invokeLater(() -> {
@@ -539,7 +523,7 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
                 || normalized.contains("iemand voordraag");
     }
 
-    private Optional<String> buildTalentclassBonusAnswer(String question, List<Chunk> contextChunks, String agentLabel) {
+    private Optional<String> buildTalentclassBonusAnswer(String question, List<Chunk> contextChunks) {   
         if (!isTalentclassQuestion(question) || !isBonusQuestion(question) || isReferralQuestion(question)) {
             return Optional.empty();
         }
@@ -558,17 +542,17 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
                     || normalized.matches(".*niet\\s+.{0,35}bonus.*")
                     || normalized.matches(".*zonder\\s+.{0,35}bonus.*")) {
                 return Optional.of(
-                        "Antwoord: Nee, Talentclass Consultants krijgen geen bonus volgens de personeelsgids.\n" +
+                                "Antwoord: Nee, Talentclass Consultants krijgen geen bonus volgens de personeelsgids.\n" +
                                 "Bron: PAGINA " + chunk.page + ".\n" +
-                                "Agent: " + agentLabel
+                                "Agent: HU-B"
                 );
             }
 
             if (normalized.matches(".*krijg.{0,35}bonus.*") || normalized.matches(".*recht\\s+op\\s+.{0,35}bonus.*")) {
                 return Optional.of(
-                        "Antwoord: Ja, volgens de personeelsgids is er een bonusregeling voor Talentclass Consultants.\n" +
+                                "Antwoord: Ja, volgens de personeelsgids is er een bonusregeling voor Talentclass Consultants.\n" +
                                 "Bron: PAGINA " + chunk.page + ".\n" +
-                                "Agent: " + agentLabel
+                                "Agent: HU-B"
                 );
             }
         }
@@ -576,101 +560,10 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         return Optional.of(
                 "Antwoord: Ik kan in de Talentclass-context geen expliciete informatie over een bonusregeling vinden.\n" +
                         "Bron: N.v.t.\n" +
-                        "Agent: " + agentLabel
+                        "Agent: HU-B"
         );
     }
-
-            // Initialiseert onderwerp-agents en bouwt semantische embeddings voor routering zonder trefwoorden.
-    private void initializeTopicAgents() throws Exception {
-
-        topicAgents.clear();
-
-        topicAgents.add(new TopicAgent(
-                "Verlof-agent",
-                "Je bent de verlof-specialist. Beantwoord alleen vragen over verlofregelingen, aanvragen, saldo, voorwaarden etc.",
-                "Onderwerp: verlof, vakantie, afwezigheid, bijzonder verlof, ouderschapsverlof, ziekmelding en urenregistratie."          
-        ));
-
-        topicAgents.add(new TopicAgent(
-                "Salaris-agent",
-                "Je bent de salaris-specialist. Bij vragen over specifieke functies zoals TC consultant, baseer je antwoord alleen op wat er onder dat kopje staat. Beantwoord alleen vragen over salaris, looncomponenten, toeslagen en uitbetaling.",
-                "Onderwerp: salaris, loonstrook, uitbetaling, vakantietoeslag, vakantiegeld, bonus, declaraties, loontabellen, vergoedingen, inhoudingen en fiscale componenten."
-        ));
-
-        topicAgents.add(new TopicAgent(
-                "Mobiliteit-agent",
-               "Je bent de mobiliteit-specialist. Beantwoord alleen vragen over leaseauto's, mobiliteitsafspraken en reisvergoeding. " +
-                "Als een vraag over kilometers met een leaseauto gaat, maak dan altijd expliciet onderscheid tussen privegebruik en zakelijk/werkgebruik. " +
-                "Als een vraag een vergelijking maakt (bijvoorbeeld privegebruik versus geen privegebruik), beantwoord dan expliciet beide situaties: " +
-                "wat er wel staat in de gids en wat er niet expliciet staat.",
-                "Onderwerp: leaseauto, mobiliteit, kilometervergoeding, tankpas, autoregeling, bijtelling en vervoer."
-        ));
-
-        topicAgents.add(new TopicAgent(
-                "Uitdienst-agent",
-                "Je bent de uitdienst-specialist. Beantwoord alleen vragen over beëindiging van het dienstverband.",
-                "Onderwerp: ontslag, uitdiensttreding, opzegtermijn, eindafrekening, inleveren middelen en exitproces."
-        ));
-
-        topicAgents.add(new TopicAgent(
-                "Verzuim-agent",
-                "Je bent de verzuim-specialist. Beantwoord alleen vragen over verzuim, arbo, gezondheidsbeleid en preventie.",
-                "Onderwerp: Verzuim, ziekte, gezondheidsbeleid, arbo, preventie en re-integratie"
-        ));
-          
-       topicAgents.add(new TopicAgent(
-                "Vergoeding-agent",
-                "Je bent de vergoeding-specialist. Beantwoord alleen vragen over vergoeding, thuiswerk.",
-                "Onderwerp: thuiswerken, vergoeding, onkosten, declareren"
-        ));
-        
-         topicAgents.add(new TopicAgent(
-                "Kennisontwikkeling-agent",
-                "Je bent de kennis-specialist. Beantwoord alleen vragen over kennisontwikkeling, training en studieschuld.",
-                "Onderwerp: TC training, training, studieregeling, studieschuld, kennisbehoefte,"
-        ));
-       
-        topicAgents.add(new TopicAgent(
-                "Algemene HR-agent",
-                "Je bent een algemene HR-agent. Beantwoord de vraag alleen als deze in de context van de personeelsgids staat.",
-                "Onderwerp: algemene HR-vragen over beleid, klachtenprocedures, gedragscode, algemene bepalingen, naleving, referral, werktijden, werkplek, pensioen, talentclass en arbeidsvoorwaarden."
-        ));
-
-        for (TopicAgent agent : topicAgents) {
-            agent.routingEmbedding = embed(agent.routingDescription);
-        }
-    }
-
-    // Selecteert de best passende onderwerp-agent op basis van semantische embedding-similarity.
-    private TopicAgent selectTopicAgent(String question) throws Exception {
-        
-        if (isSalaryQuestion(question)) {
-            for (TopicAgent agent : topicAgents) {
-                if ("Salaris-agent".equals(agent.label)) {
-                    return agent;
-                }
-            }
-        }
-
-        List<Double> questionEmbedding = embed(question);
-        TopicAgent bestAgent = topicAgents.get(topicAgents.size() - 1);
-        double bestScore = -1.0;
-
-        for (TopicAgent agent : topicAgents) {
-            if (agent.routingEmbedding == null || agent.routingEmbedding.isEmpty()) {
-                continue;
-            }
-
-            double score = cosine(questionEmbedding, agent.routingEmbedding);
-            if (score > bestScore) {
-                bestScore = score;
-                bestAgent = agent;
-            }
-        }
-
-        return bestAgent;
-    }
-    
+         
     private boolean isSalaryQuestion(String query) {
         String normalized = query.toLowerCase(Locale.ROOT);
         return normalized.contains("salaris")
@@ -693,7 +586,6 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
     // Stelt context en prompt samen, vraagt de chat-API om antwoord en bewaart conversatiehistorie.
     private String ask(String question) throws Exception {
 
-        TopicAgent selectedAgent = selectTopicAgent(question);
         List<Chunk> topChunks = search(question);
 
         StringBuilder contextText = new StringBuilder();
@@ -707,7 +599,7 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
 
         String contextString = contextText.toString();
         
-         Optional<String> talentclassBonusAnswer = buildTalentclassBonusAnswer(question, topChunks, selectedAgent.label);
+         Optional<String> talentclassBonusAnswer = buildTalentclassBonusAnswer(question, topChunks);
         if (talentclassBonusAnswer.isPresent()) {
             return talentclassBonusAnswer.get();
         }
@@ -717,10 +609,7 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         String systemPrompt =
 
 "# ROLE " +
-"Je bent HU-B, een HR-assistent die werkt met gespecialiseerde agents per onderwerp uit de personeelsgids. " +
-"Geselecteerde agent: {{agent_label}}. " +
-"Geselecteerd onderwerp: {{agent_subject}}. " +
-"Agent-instructie: {{agent_instruction}} " +
+"Je bent HU-B, een HR-assistent die vragen beantwoord op basis van de personeelsgids." +
                 
 "# DOEL " +
 "Verstrek accurate, feitelijke informatie over het gevraagde HR-onderwerp op basis van de verstrekte PERSONEELSGIDS. " +
@@ -730,8 +619,7 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
 "Als het antwoord daar niet staat geef je aan wat je niet kan vinden." +
             //    + "\"Ik kan deze informatie niet terugvinden in de personeelsgids. Neem contact op met HR voor verdere ondersteuning.\" " +
 
-"2. Scope: Behandel uitsluitend vragen die binnen het geselecteerde onderwerp vallen. " +
-"Bij gemengde vragen behandel je alleen het deel dat binnen het onderwerp past en benoem je kort dat er voor andere onderwerpen een nieuwe vraag gesteld moet worden. " +
+"2. Scope: Behandel de vraag alleen binnen de HR-context van de personeelsgids."+
 "Als de vraag een specifieke doelgroep/functie noemt (zoals Talentclass of TC consultant), gebruik dan alleen context waarin die doelgroep/functie expliciet voorkomt, behalve bij referral/voordracht-vragen waar een algemene referralregeling van toepassing kan zijn. " +
                 
 "3. Geen Hallucinaties: Verzin nooit paginanummers, citaten, data of percentages die niet letterlijk in de tekst staan. " +
@@ -756,10 +644,7 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
 "Antwoord: [Geef hier het feitelijke antwoord.] " +
 
 "Bron: [Vermeld hoofdstuktitel of sectienaam EN paginanummer uit de gids. Indien niet gevonden: N.v.t.] " +
-                
-"Agent: [Vermeld hier de geselecteerde agent. Indien niet gevonden: N.v.t.]" +
-
-
+               
 "<context> " +
 "{{hier de tekst uit de personeelsgids}} " +
 "</context> " +
@@ -768,10 +653,7 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
 "{{vraag}} " +
 "</vraag_gebruiker>";
 
-        String finalSystemPrompt = systemPrompt
-                .replace("{{agent_label}}", selectedAgent.label)
-                .replace("{{agent_instruction}}", selectedAgent.roleInstruction)
-                .replace("{{agent_subject}}", selectedAgent.routingDescription)             
+        String finalSystemPrompt = systemPrompt          
                 .replace("{{hier de tekst uit de personeelsgids}}", contextString)
                 .replace("{{vraag}}", question);
 
