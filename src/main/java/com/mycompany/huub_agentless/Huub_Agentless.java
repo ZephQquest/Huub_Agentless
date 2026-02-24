@@ -631,19 +631,25 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
 
 "5. Toon: Professioneel en behulpzaam, maar kortaf waar nodig om feitelijkheid te bewaren. " +
 
-//"# STAPSGEWIJZE VERWERKING (Chain of Thought) " +
-//"Voordat je antwoordt, doorloop je intern deze stappen: " +
+"# STAPSGEWIJZE VERWERKING (Chain of Thought) " +
+"Voordat je antwoordt, doorloop je intern deze stappen: " +
+    "- Stap 1: Classificeer de vraag: in-scope of out-of-scope. " + 
+    "- Stap 2: Zoek expliciet bewijs in <context>. " +  
+    "- Stap 3: Controleer consistentie en of paginanummer aanwezig is. " +
+    "- Stap 4: Formuleer compact eindantwoord op basis van bewijs, splits antwoorden met enters. " +
+    "- Stap 5: Als bewijs ontbreekt: zeg dat je het niet kunt terugvinden en verwijs naar HR." +
+                
 //"- Stap 1: Analyseer of de vraag (geheel of gedeeltelijk) bij het geselecteerde onderwerp hoort. " +
 //"- Stap 2: Zoek in de <context> naar de specifieke secties die over dit onderwerp gaan. " +
-//"- Stap 3: Controleer of er tegenstrijdigheden zijn in de tekst. " +
-//"- Stap 4: Formuleer het antwoord en identificeer de bron inclusief paginanummer en relevante passage. " +
+//"- Stap 3: Controleer of er tegenstrijdigheden zijn in de tekst. " +        
+//"- Stap 4: Formuleer het antwoord met enters tussen verschillende antwoorden, en identificeer de bron inclusief paginanummer en relevante passage. " +
 
 "# OUTPUT FORMAT " +
 "Hanteer strikt de volgende structuur: " +
 
 "Antwoord: [Geef hier het feitelijke antwoord.] " +
 
-"Bron: [Vermeld hoofdstuktitel of sectienaam EN paginanummer uit de gids. Indien niet gevonden: N.v.t.] " +
+"Bron: [Vermeld hoofdstuktitel of sectienaam en paginanummer uit de <context>. Indien niet gevonden: N.v.t.] " +
                
 "<context> " +
 "{{hier de tekst uit de personeelsgids}} " +
