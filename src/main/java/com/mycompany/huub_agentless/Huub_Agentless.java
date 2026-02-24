@@ -12,6 +12,9 @@ import java.awt.*;
 import java.io.File;
 import java.util.*;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import static javax.swing.WindowConstants.EXIT_ON_CLOSE;
 
 public class Huub_Agentless extends JFrame {
@@ -587,14 +590,20 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
     private String ask(String question) throws Exception {
 
         List<Chunk> topChunks = search(question);
+        Map<Integer, Chunk> sourceById = new LinkedHashMap<>(); 
 
         StringBuilder contextText = new StringBuilder();
+        int sourceId = 1;
         for (Chunk c : topChunks) {
-            contextText.append("PAGINA ")
+            sourceById.put(sourceId, c);
+            contextText.append("BRON ")
+                    .append(sourceId)
+                    .append(" | PAGINA ")
                     .append(c.page)
                     .append(": ")
                     .append(c.text)
                     .append("\n\n");
+            sourceId++;
         }
 
         String contextString = contextText.toString();
@@ -626,8 +635,8 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
 
 "4. Bronvermelding (verplicht): " +
 "Als informatie uit de PERSONEELSGIDS wordt gebruikt, moet je: " +
-"- het juiste paginanummer uit de context vermelden, " +
-"- geen pagina vermelden als deze niet expliciet in de context staat. " +
+"- uitsluitend bron-ID's noemen die in de context voorkomen (BRON X), " +
+"- geen paginanummers zelf uitschrijven. " +
 
 "5. Toon: Professioneel en behulpzaam, maar kortaf waar nodig om feitelijkheid te bewaren. " +
 
@@ -649,7 +658,7 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
 
 "Antwoord: [Geef hier het feitelijke antwoord.] " +
 
-"Bron: [Vermeld hoofdstuktitel of sectienaam en paginanummer uit de <context>. Indien niet gevonden: N.v.t.] " +
+"BronID: [Noem alleen BRON-nummers, bijv. 2 of 2,5. Indien niet gevonden: N.v.t.] " +
                
 "<context> " +
 "{{hier de tekst uit de personeelsgids}} " +
@@ -694,14 +703,67 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
                     .getJSONObject("message")
                     .getString("content");
 
+            String normalizedAnswer = normalizeAnswerWithPageReferences(answer, sourceById);
             conversationHistory.add(new JSONObject().put("role", "user").put("content", question));
-            conversationHistory.add(new JSONObject().put("role", "assistant").put("content", answer));
+            conversationHistory.add(new JSONObject().put("role", "assistant").put("content", normalizedAnswer));
 
             if (conversationHistory.size() > 12)
                 conversationHistory.subList(0, conversationHistory.size() - 12).clear();
 
-            return answer;
+            return normalizedAnswer;
         }
+    }
+
+    private String normalizeAnswerWithPageReferences(String rawAnswer, Map<Integer, Chunk> sourceById) {
+        if (rawAnswer == null || rawAnswer.isBlank()) {
+            return "Antwoord: Ik kan geen antwoord genereren op basis van de aangeleverde context.\nBron: N.v.t.\nAgent: HU-B";
+        }
+
+        String answerText = extractField(rawAnswer, "Antwoord:");
+        if (answerText == null || answerText.isBlank()) {
+            answerText = rawAnswer.trim();
+        }
+
+        String bronField = extractField(rawAnswer, "BronID:");
+        Set<Integer> citedPages = new LinkedHashSet<>();
+
+        if (bronField != null && !bronField.equalsIgnoreCase("N.v.t.")) {
+            Matcher matcher = Pattern.compile("\\d+").matcher(bronField);
+            while (matcher.find()) {
+                int id = Integer.parseInt(matcher.group());
+                Chunk chunk = sourceById.get(id);
+                if (chunk != null) {
+                    citedPages.add(chunk.page);
+                }
+            }
+        }
+     
+        String bronText;
+        if (citedPages.isEmpty()) {
+            bronText = "N.v.t.";
+        } else {
+            bronText = "PAGINA " + citedPages.stream()
+                    .map(String::valueOf)
+                    .collect(Collectors.joining(", PAGINA "));
+        }
+
+        return "Antwoord: " + answerText.trim() + "\n"
+                + "Bron: " + bronText + "\n"
+                + "Agent: HU-B";
+    }
+
+    private String extractField(String text, String label) {
+        if (text == null || label == null) {
+            return null;
+        }
+
+        Pattern pattern = Pattern.compile("(?is)" + Pattern.quote(label) + "\\s*(.*?)(?:\\n\\s*[A-Za-zÀ-ÿ]+\\s*:|$)");
+        Matcher matcher = pattern.matcher(text);
+        if (!matcher.find()) {
+            return null;
+        }
+
+        return matcher.group(1).trim();   
     }
 
     // ==============================
