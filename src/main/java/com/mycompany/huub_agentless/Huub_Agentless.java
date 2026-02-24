@@ -566,7 +566,65 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
                         "Agent: HU-B"
         );
     }
-         
+      private Optional<String> buildVerzuimDurationAnswer(String question, List<Chunk> contextChunks) {
+        if (question == null || question.isBlank()) {
+            return Optional.empty();
+        }
+
+        String normalized = question.toLowerCase(Locale.ROOT);
+        boolean isVerzuimQuestion = normalized.contains("verzuim")
+                || normalized.contains("ziek")
+                || normalized.contains("ziekmelding");
+
+        if (!isVerzuimQuestion || (!normalized.contains("dagen") && !normalized.contains("weken"))) {
+            return Optional.empty();
+        }
+
+        Matcher daysMatcher = Pattern.compile("(\\d+)\\s*dagen?").matcher(normalized);
+        Matcher weeksMatcher = Pattern.compile("(\\d+)\\s*weken?").matcher(normalized);
+
+        Integer totalDays = null;
+        if (daysMatcher.find()) {
+            totalDays = Integer.parseInt(daysMatcher.group(1));
+        } else if (weeksMatcher.find()) {
+            totalDays = Integer.parseInt(weeksMatcher.group(1)) * 7;
+        }
+
+        if (totalDays == null) {
+            return Optional.empty();
+        }
+
+        Integer sourcePage = null;
+        for (Chunk chunk : contextChunks) {
+            if (chunk == null || chunk.text == null) {
+                continue;
+            }
+
+            String chunkText = chunk.text.toLowerCase(Locale.ROOT);
+            if (chunkText.contains("langdurig verzuim")
+                    && (chunkText.contains("meer dan twee weken") || chunkText.contains("langer dan twee weken"))) {
+                sourcePage = chunk.page;
+                break;
+            }
+        }
+
+        boolean langdurigVerzuim = totalDays > 14;
+        String bron = sourcePage == null ? "N.v.t." : "PAGINA " + sourcePage;
+
+        if (langdurigVerzuim) {
+            return Optional.of(
+                    "Antwoord: Ja, als je langer dan twee weken ziek bent, val je onder langdurig verzuim.\n"
+                            + "Bron: " + bron + "\n"
+                            + "Agent: HU-B"
+            );
+        }
+
+        return Optional.of(
+                "Antwoord: Nee, bij " + totalDays + " dagen ziekte val je nog niet onder langdurig verzuim, omdat dat pas geldt bij meer dan twee weken. Je moet je wel ziek melden volgens de procedures.\n"
+                        + "Bron: " + bron + "\n"
+                        + "Agent: HU-B"
+        );
+    }   
     private boolean isSalaryQuestion(String query) {
         String normalized = query.toLowerCase(Locale.ROOT);
         return normalized.contains("salaris")
@@ -607,7 +665,12 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         }
 
         String contextString = contextText.toString();
-        
+        Optional<String> verzuimDurationAnswer = buildVerzuimDurationAnswer(question, topChunks);
+        if (verzuimDurationAnswer.isPresent()) {
+            return verzuimDurationAnswer.get();
+        }
+
+
          Optional<String> talentclassBonusAnswer = buildTalentclassBonusAnswer(question, topChunks);
         if (talentclassBonusAnswer.isPresent()) {
             return talentclassBonusAnswer.get();
@@ -618,7 +681,7 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         String systemPrompt =
 
 "# ROLE " +
-"Je bent HU-B, een HR-assistent die vragen beantwoord op basis van de personeelsgids." +
+"Je bent HU-B, gedraag je zoals iemand die 20 jaar HR ervaring heeft en die vragen beantwoord op basis van de personeelsgids." +
                 
 "# DOEL " +
 "Verstrek accurate, feitelijke informatie over het gevraagde HR-onderwerp op basis van de verstrekte PERSONEELSGIDS. " +
@@ -779,4 +842,3 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         });
     }
 }
-//hello
