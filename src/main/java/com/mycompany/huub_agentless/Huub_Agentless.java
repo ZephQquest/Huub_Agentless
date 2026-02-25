@@ -871,7 +871,7 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         }
     }
 
-    private String normalizeAnswerWithPageReferences(String question, String rawAnswer, Map<Integer, Chunk> sourceById) {
+    private String normalizeAnswerWithPageReferences(String question, String rawAnswer, Map<Integer, Chunk> sourceById) throws Exception {
         if (rawAnswer == null || rawAnswer.isBlank()) {
             return "Antwoord: Ik kan geen antwoord genereren op basis van de aangeleverde context.\nBron: N.v.t.";
         }
@@ -886,8 +886,13 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         String bronField = extractField(rawAnswer, "BronID:");
         Set<Integer> citedPages = new LinkedHashSet<>();
         Set<Integer> allCitedPages = new LinkedHashSet<>();
+        // Page-level aggregated scores: sum chunk scores per page (#4)
         Map<Integer, Double> pageRelevanceScores = new HashMap<>();
-        
+        Map<Integer, Integer> pageChunkCounts = new HashMap<>();
+
+        // Embed the question once for semantic scoring (#1)
+        List<Double> questionEmbedding = embed(question);
+
         if (bronField != null && !bronField.equalsIgnoreCase("N.v.t.")) {
             Matcher matcher = Pattern.compile("\\d+").matcher(bronField);
             while (matcher.find()) {
@@ -895,14 +900,20 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
                 Chunk chunk = sourceById.get(id);
                 if (chunk != null) {
                     allCitedPages.add(chunk.page);
-                    double relevance = citationRelevanceScore(question, answerText, chunk.text);
-                    pageRelevanceScores.merge(chunk.page, relevance, Math::max);                    
+                    double relevance = citationRelevanceScore(question, answerText, chunk.text, questionEmbedding, chunk.embedding);
+                    // Aggregate scores per page (#4): accumulate sum and count
+                    pageRelevanceScores.merge(chunk.page, relevance, Double::sum);
+                    pageChunkCounts.merge(chunk.page, 1, Integer::sum);
                     if (isRelevantCitation(question, answerText, chunk.text)) {
                         citedPages.add(chunk.page);
                     }
                 }
             }
         }
+
+        // Convert summed page scores to averages (#4)
+        pageRelevanceScores.replaceAll((page, sum) ->
+                sum / pageChunkCounts.getOrDefault(page, 1));
         if (citedPages.isEmpty()) {
             citedPages.addAll(allCitedPages);
         }
@@ -912,12 +923,18 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         }
      
         String bronText;
+        double bestPageScore = citedPages.stream()
+                .mapToDouble(p -> pageRelevanceScores.getOrDefault(p, 0.0))
+                .max()
+                .orElse(0.0);
+        boolean lowConfidence = bestPageScore < 0.2 && !citedPages.isEmpty();
+
         if (citedPages.isEmpty()) {
             if (looksLikeNoAnswer(answerText)) {
                 bronText = "N.v.t.";
             } else {
                 sourceById.values().stream()
-                        .limit(1)
+                        .limit(2)
                         .map(chunk -> chunk.page)
                         .forEach(citedPages::add);
                 bronText = citedPages.isEmpty()
@@ -930,6 +947,9 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
             bronText = "PAGINA " + citedPages.stream()
                     .map(String::valueOf)
                     .collect(Collectors.joining(", PAGINA "));
+            if (lowConfidence) {
+                bronText += " (onzeker – controleer bij HR)";
+            }
         }
 
         String functieafhankelijkText = (functieafhankelijkField == null || functieafhankelijkField.isBlank())
@@ -963,21 +983,34 @@ private boolean isRelevantCitation(String question, String answerText, String ch
             }
         }
 
-        if (overlap >= 2 || (questionTokens.size() <= 3 && overlap >= 1)) {
-            return true;
+        if (!questionTokens.isEmpty()) {
+            double overlapRatio = (double) overlap / questionTokens.size();
+            if (overlapRatio >= 0.30 || (questionTokens.size() <= 3 && overlap >= 1)) {
+                return true;
+            }
         }
 
         return lexicalSimilarity(answerText == null ? "" : answerText, chunkText) >= 0.10;
     }
 
-private double citationRelevanceScore(String question, String answerText, String chunkText) {
+private double citationRelevanceScore(String question, String answerText, String chunkText,
+                                          List<Double> questionEmbedding, List<Double> chunkEmbedding) {
         if (chunkText == null || chunkText.isBlank()) {
             return 0.0;
         }
 
-        double questionScore = lexicalSimilarity(question == null ? "" : question, chunkText);
-        double answerScore = lexicalSimilarity(answerText == null ? "" : answerText, chunkText);
-        return (questionScore * 0.65) + (answerScore * 0.35);
+        double lexicalQuestion = lexicalSimilarity(question == null ? "" : question, chunkText);
+        double lexicalAnswer   = lexicalSimilarity(answerText == null ? "" : answerText, chunkText);
+        double lexicalScore    = (lexicalQuestion * 0.65) + (lexicalAnswer * 0.35);
+
+        // Blend with semantic similarity when embeddings are available (#1)
+        if (questionEmbedding != null && chunkEmbedding != null
+                && !questionEmbedding.isEmpty() && !chunkEmbedding.isEmpty()) {
+            double semanticScore = cosine(questionEmbedding, chunkEmbedding);
+            return (semanticScore * 0.60) + (lexicalScore * 0.40);
+        }
+
+        return lexicalScore;
     }
 
     private LinkedHashSet<Integer> pruneIrrelevantPages(Set<Integer> citedPages, Map<Integer, Double> pageRelevanceScores) {
@@ -996,7 +1029,8 @@ private double citationRelevanceScore(String question, String answerText, String
         for (int i = 1; i < sortedPages.size(); i++) {
             int page = sortedPages.get(i);
             double score = pageRelevanceScores.getOrDefault(page, 0.0);
-            if (score >= 0.15 && bestScore - score <= 0.03) {
+            // Use ratio check instead of absolute gap (#3): page must score ≥85% of best
+            if (bestScore > 0 && score / bestScore >= 0.85 && score >= 0.15) {
                 prunedPages.add(page);
             }
         }
