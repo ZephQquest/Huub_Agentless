@@ -396,14 +396,15 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
     private List<Chunk> search(String query) throws Exception {
 
         // Hybride retrieval: combineer semantische embedding-score met lexicale overlap-score
-        List<Double> qVec = embed(query);
+         String retrievalQuery = buildRetrievalQuery(query);
+        List<Double> qVec = embed(retrievalQuery);
 
         // Maak lijst van (chunk + similarity score)
         List<Map.Entry<Chunk, Double>> scoredChunks = new ArrayList<>();
 
         for (Chunk c : chunks) {
             double semanticScore = cosine(c.embedding, qVec);
-            double lexicalScore = lexicalSimilarity(query, c.text);
+            double lexicalScore = lexicalSimilarity(retrievalQuery, c.text);
             double score = (semanticScore * 0.80) + (lexicalScore * 0.20);
             scoredChunks.add(Map.entry(c, score));
         }
@@ -479,7 +480,24 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
 
         return results;
     }
-    
+    private String buildRetrievalQuery(String query) {
+        if (query == null || query.isBlank()) {
+            return "";
+        }
+
+        String normalized = query.toLowerCase(Locale.ROOT);
+        StringBuilder enriched = new StringBuilder(query.trim());
+
+        if (normalized.contains("declaratie") || normalized.contains("declareren")) {
+            enriched.append(" declareren onkosten onkostendeclaratie declaratie indienen bonnetjes terugbetaling expense claim");
+        }
+
+        if (normalized.contains("ziekmeld") || normalized.contains("verzuim")) {
+            enriched.append(" ziekmelding langdurig verzuim herstelmelding arbodienst");
+        }
+
+        return enriched.toString();
+    }
     private Set<String> detectFunctionLabels(String text) {
         Set<String> labels = new LinkedHashSet<>();
         if (text == null || text.isBlank()) {
