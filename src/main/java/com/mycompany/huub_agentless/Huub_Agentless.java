@@ -886,6 +886,7 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         String bronField = extractField(rawAnswer, "BronID:");
         Set<Integer> citedPages = new LinkedHashSet<>();
         Set<Integer> allCitedPages = new LinkedHashSet<>();
+        Map<Integer, Double> pageRelevanceScores = new HashMap<>();
         
         if (bronField != null && !bronField.equalsIgnoreCase("N.v.t.")) {
             Matcher matcher = Pattern.compile("\\d+").matcher(bronField);
@@ -894,24 +895,29 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
                 Chunk chunk = sourceById.get(id);
                 if (chunk != null) {
                     allCitedPages.add(chunk.page);
+                    double relevance = citationRelevanceScore(question, answerText, chunk.text);
+                    pageRelevanceScores.merge(chunk.page, relevance, Math::max);                    
                     if (isRelevantCitation(question, answerText, chunk.text)) {
                         citedPages.add(chunk.page);
                     }
                 }
             }
         }
-     if (citedPages.isEmpty()) {
+        if (citedPages.isEmpty()) {
             citedPages.addAll(allCitedPages);
         }
 
-
+        if (citedPages.size() > 1) {
+            citedPages = pruneIrrelevantPages(citedPages, pageRelevanceScores);
+        }
+     
         String bronText;
         if (citedPages.isEmpty()) {
             if (looksLikeNoAnswer(answerText)) {
                 bronText = "N.v.t.";
             } else {
                 sourceById.values().stream()
-                        .limit(2)
+                        .limit(1)
                         .map(chunk -> chunk.page)
                         .forEach(citedPages::add);
                 bronText = citedPages.isEmpty()
@@ -964,6 +970,39 @@ private boolean isRelevantCitation(String question, String answerText, String ch
         return lexicalSimilarity(answerText == null ? "" : answerText, chunkText) >= 0.10;
     }
 
+private double citationRelevanceScore(String question, String answerText, String chunkText) {
+        if (chunkText == null || chunkText.isBlank()) {
+            return 0.0;
+        }
+
+        double questionScore = lexicalSimilarity(question == null ? "" : question, chunkText);
+        double answerScore = lexicalSimilarity(answerText == null ? "" : answerText, chunkText);
+        return (questionScore * 0.65) + (answerScore * 0.35);
+    }
+
+    private LinkedHashSet<Integer> pruneIrrelevantPages(Set<Integer> citedPages, Map<Integer, Double> pageRelevanceScores) {
+        List<Integer> sortedPages = citedPages.stream()
+                .sorted((a, b) -> Double.compare(
+                        pageRelevanceScores.getOrDefault(b, 0.0),
+                        pageRelevanceScores.getOrDefault(a, 0.0)))
+                .collect(Collectors.toList());
+
+        int bestPage = sortedPages.get(0);
+        double bestScore = pageRelevanceScores.getOrDefault(bestPage, 0.0);
+
+        LinkedHashSet<Integer> prunedPages = new LinkedHashSet<>();
+        prunedPages.add(bestPage);
+
+        for (int i = 1; i < sortedPages.size(); i++) {
+            int page = sortedPages.get(i);
+            double score = pageRelevanceScores.getOrDefault(page, 0.0);
+            if (score >= 0.15 && bestScore - score <= 0.03) {
+                prunedPages.add(page);
+            }
+        }
+
+        return prunedPages;
+    }
 
     private boolean looksLikeNoAnswer(String answerText) {
         if (answerText == null || answerText.isBlank()) {
@@ -977,7 +1016,6 @@ private boolean isRelevantCitation(String question, String answerText, String ch
                 || normalized.contains("geen informatie")
                 || normalized.contains("neem contact op met hr");
     }
-
 
     private String extractField(String text, String label) {
         if (text == null || label == null) {
