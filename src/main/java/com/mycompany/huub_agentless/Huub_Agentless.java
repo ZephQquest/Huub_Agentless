@@ -636,20 +636,23 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
                     || normalized.matches(".*zonder\\s+.{0,35}bonus.*")) {
                 return Optional.of(
                                 "Antwoord: Nee, Talentclass Consultants krijgen geen bonus volgens de personeelsgids.\n" +
-                                "Bron: PAGINA " + chunk.page + "."
+                                        "Functieafhankelijk: Ja - Talentclass Consultant.\n" +
+                                        "Bron: PAGINA " + chunk.page + "."
                 );
             }
 
             if (normalized.matches(".*krijg.{0,35}bonus.*") || normalized.matches(".*recht\\s+op\\s+.{0,35}bonus.*")) {
                 return Optional.of(
                                 "Antwoord: Ja, volgens de personeelsgids is er een bonusregeling voor Talentclass Consultants.\n" +
-                                "Bron: PAGINA " + chunk.page + "."
+                                        "Functieafhankelijk: Ja - Talentclass Consultant.\n" +
+                                        "Bron: PAGINA " + chunk.page + "."
                 );
             }
         }
 
         return Optional.of(
                 "Antwoord: Ik kan in de Talentclass-context geen expliciete informatie over een bonusregeling vinden.\n" +
+                        "Functieafhankelijk: Ja - Talentclass Consultant.\n" +
                         "Bron: N.v.t."
         );
     }
@@ -701,12 +704,14 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         if (langdurigVerzuim) {
             return Optional.of(
                     "Antwoord: Ja, als je langer dan twee weken ziek bent, val je onder langdurig verzuim.\n"
+                            + "Functieafhankelijk: Nee - algemeen beleid.\n"
                             + "Bron: " + bron
             );
         }
 
         return Optional.of(
                 "Antwoord: Nee, bij " + totalDays + " dagen ziekte val je nog niet onder langdurig verzuim, omdat dat pas geldt bij meer dan twee weken. Je moet je wel ziek melden volgens de procedures.\n"
+                        + "Functieafhankelijk: Nee - algemeen beleid.\n"
                         + "Bron: " + bron
         );
     }   
@@ -873,7 +878,9 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
 
     private String normalizeAnswerWithPageReferences(String question, String rawAnswer, Map<Integer, Chunk> sourceById) throws Exception {
         if (rawAnswer == null || rawAnswer.isBlank()) {
-            return "Antwoord: Ik kan geen antwoord genereren op basis van de aangeleverde context.\nBron: N.v.t.";
+            return "Antwoord: Ik kan geen antwoord genereren op basis van de aangeleverde context.\n"
+                    + "Functieafhankelijk: Nee - algemeen beleid.\n"
+                    + "Bron: N.v.t.";
         }
 
         String answerText = extractField(rawAnswer, "Antwoord:");
