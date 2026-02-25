@@ -39,7 +39,8 @@ public class Huub_Agentless extends JFrame {
 
     private final List<JSONObject> conversationHistory = new ArrayList<>();
     private final List<Chunk> chunks = new ArrayList<>();
-    
+    private static final Map<String, List<String>> FUNCTION_PROFILES = createFunctionProfiles();
+        
     // ==============================
     // DATASTRUCTUUR
     // ==============================
@@ -56,7 +57,30 @@ public class Huub_Agentless extends JFrame {
             this.page = page;
         }
     }
-    //test
+    
+    private static Map<String, List<String>> createFunctionProfiles() {
+        Map<String, List<String>> profiles = new LinkedHashMap<>();
+        profiles.put("Talentclass Consultant", Arrays.asList(
+                "talentclass", "talent class", "tc consultant", "tc-consultant", "tc consultants"
+        ));
+        profiles.put("Accountmanager", Arrays.asList(
+                "accountmanager"
+        ));
+        profiles.put("Recruiter", Arrays.asList(
+                "recruiter", "corporate recruiter", "stage", "werkstudent"
+        ));
+        profiles.put("Fieldmanager TC", Arrays.asList(
+                "fieldmanager", "fieldmanager TC"
+        ));
+        profiles.put("TC coördinator", Arrays.asList(
+                "TC coördinator", "coördinator"
+        ));
+        profiles.put("Business unit manager", Arrays.asList(
+                "business unit manager", "BU manager"
+        ));
+        return profiles;
+    }
+    
 
     // ==============================
     // CONSTRUCTOR
@@ -397,7 +421,8 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         
         boolean talentclassVraag = isTalentclassQuestion(query);
         boolean referralVraag = isReferralQuestion(query);
-
+        Set<String> functionLabels = detectFunctionLabels(query);
+        
         // 1) Eerst alleen voldoende relevante chunks.
         for (Map.Entry<Chunk, Double> entry : scoredChunks) {
             if (entry.getValue() < MIN_SIMILARITY) {
@@ -405,6 +430,10 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
             }
 
             Chunk candidate = entry.getKey();
+          
+            if (!functionLabels.isEmpty() && !matchesFunctionScope(candidate, functionLabels)) {
+                continue;
+            }
             
           if (talentclassVraag && !referralVraag && !isTalentclassChunk(candidate)) {
                 continue;
@@ -427,6 +456,11 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         // Bij Talentclass-vragen vullen we alleen aan met chunks die Talentclass expliciet noemen.
         for (Map.Entry<Chunk, Double> entry : scoredChunks) {
             Chunk candidate = entry.getKey();
+            
+            if (!functionLabels.isEmpty() && !matchesFunctionScope(candidate, functionLabels)) {
+                continue;
+            }
+
             if (talentclassVraag && !referralVraag && !isTalentclassChunk(candidate)) {
                 continue;
             }
@@ -444,6 +478,44 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         }
 
         return results;
+    }
+    
+    private Set<String> detectFunctionLabels(String text) {
+        Set<String> labels = new LinkedHashSet<>();
+        if (text == null || text.isBlank()) {
+            return labels;
+        }
+
+        String normalized = text.toLowerCase(Locale.ROOT);
+        for (Map.Entry<String, List<String>> profile : FUNCTION_PROFILES.entrySet()) {
+            for (String keyword : profile.getValue()) {
+                if (normalized.contains(keyword)) {
+                    labels.add(profile.getKey());
+                    break;
+                }
+            }
+        }
+
+        return labels;
+    }
+
+    private boolean matchesFunctionScope(Chunk chunk, Set<String> requiredLabels) {
+        if (chunk == null || chunk.text == null || requiredLabels == null || requiredLabels.isEmpty()) {
+            return true;
+        }
+
+        Set<String> chunkLabels = detectFunctionLabels(chunk.text);
+        if (chunkLabels.isEmpty()) {
+            return true;
+        }
+
+        for (String label : requiredLabels) {
+            if (chunkLabels.contains(label)) {
+                return true;
+            }
+        }
+
+        return false;
     }
     
     private double lexicalSimilarity(String query, String chunkText) {
@@ -648,11 +720,17 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         StringBuilder contextText = new StringBuilder();
         int sourceId = 1;
         for (Chunk c : topChunks) {
+            Set<String> chunkFunctions = detectFunctionLabels(c.text);
+            String functionMarker = chunkFunctions.isEmpty()
+                    ? "ALGEMEEN"
+                    : String.join(", ", chunkFunctions);            
             sourceById.put(sourceId, c);
             contextText.append("BRON ")
                     .append(sourceId)
                     .append(" | PAGINA ")
                     .append(c.page)
+                    .append(" | FUNCTIEAFHANKELIJK: ")
+                    .append(functionMarker)
                     .append(": ")
                     .append(c.text)
                     .append("\n\n");
@@ -688,6 +766,7 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
 
 "2. Scope: Behandel de vraag alleen binnen de HR-context van de personeelsgids."+
 "Als de vraag een specifieke doelgroep/functie noemt (zoals Talentclass of TC consultant), gebruik dan alleen context waarin die doelgroep/functie expliciet voorkomt, behalve bij referral/voordracht-vragen waar een algemene referralregeling van toepassing kan zijn. " +
+"Markeer in je antwoord expliciet of de gevonden informatie functieafhankelijk is en op welke functie(s) dit van toepassing is. " +
                 
 "3. Geen Hallucinaties: Verzin nooit paginanummers, citaten, data of percentages die niet letterlijk in de tekst staan. " +
 
@@ -716,6 +795,8 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
 
 "Antwoord: [Geef hier het feitelijke antwoord, zonder labels zoals BronID of Bron in deze regel.] " +
 
+"Functieafhankelijk: [Ja - noem functie(s) of Nee - algemeen beleid.] " +                
+                
 "BronID: [Noem alleen BRON-nummers, bijv. 2 of 2,5. Indien niet gevonden: N.v.t.] " +
                
 "<context> " +
@@ -782,7 +863,8 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
             answerText = rawAnswer.trim();
         }
         answerText = stripSourceArtifacts(answerText);   
-        
+        String functieafhankelijkField = extractField(rawAnswer, "Functieafhankelijk:");
+               
         String bronField = extractField(rawAnswer, "BronID:");
         Set<Integer> citedPages = new LinkedHashSet<>();
         Set<Integer> allCitedPages = new LinkedHashSet<>();
@@ -826,8 +908,21 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
                     .collect(Collectors.joining(", PAGINA "));
         }
 
+        String functieafhankelijkText = (functieafhankelijkField == null || functieafhankelijkField.isBlank())
+                ? inferFunctionDependency(answerText)
+                : functieafhankelijkField.trim();
+        
         return "Antwoord: " + answerText.trim() + "\n"
+                + "Functieafhankelijk: " + functieafhankelijkText + "\n"
                 + "Bron: " + bronText;
+    }
+    private String inferFunctionDependency(String answerText) {
+        Set<String> labels = detectFunctionLabels(answerText);
+        if (labels.isEmpty()) {
+            return "Nee - algemeen beleid.";
+        }
+
+        return "Ja - " + String.join(", ", labels) + ".";
     }
 private boolean isRelevantCitation(String question, String answerText, String chunkText) {
         if (chunkText == null || chunkText.isBlank()) {
