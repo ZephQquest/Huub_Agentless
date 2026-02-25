@@ -857,7 +857,6 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
 
 "2. Scope: Behandel de vraag alleen binnen de HR-context van de personeelsgids."+
 "Als de vraag een specifieke doelgroep/functie noemt (zoals Talentclass of TC consultant), gebruik dan alleen context waarin die doelgroep/functie expliciet voorkomt, behalve bij referral/voordracht-vragen waar een algemene referralregeling van toepassing kan zijn. " +
-"Markeer in je antwoord expliciet of de gevonden informatie functieafhankelijk is en op welke functie(s) dit van toepassing is. " +
                 
 "3. Geen Hallucinaties: Verzin nooit paginanummers, citaten, data of percentages die niet letterlijk in de tekst staan. " +
 
@@ -885,8 +884,6 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
 "Hanteer strikt de volgende structuur: " +
 
 "Antwoord: [Geef hier het feitelijke antwoord, zonder labels zoals BronID of Bron in deze regel.] " +
-
-"Functieafhankelijk: [Ja - noem functie(s) of Nee - algemeen beleid.] " +                
                 
 "BronID: [Noem alleen BRON-nummers, bijv. 2 of 2,5. Indien niet gevonden: N.v.t.] " +
                
@@ -947,7 +944,6 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
     private String normalizeAnswerWithPageReferences(String question, String rawAnswer, Map<Integer, Chunk> sourceById) throws Exception {
         if (rawAnswer == null || rawAnswer.isBlank()) {
             return "Antwoord: Ik kan geen antwoord genereren op basis van de aangeleverde context.\n"
-                    + "Functieafhankelijk: Nee - algemeen beleid.\n"
                     + "Bron: N.v.t.";
         }
 
@@ -956,7 +952,6 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
             answerText = rawAnswer.trim();
         }
         answerText = stripSourceArtifacts(answerText);   
-        String functieafhankelijkField = extractField(rawAnswer, "Functieafhankelijk:");
                
         String bronField = extractField(rawAnswer, "BronID:");
         Set<Integer> citedPages = new LinkedHashSet<>();
@@ -1027,22 +1022,11 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
             }
         }
 
-        String functieafhankelijkText = (functieafhankelijkField == null || functieafhankelijkField.isBlank())
-                ? inferFunctionDependency(answerText)
-                : functieafhankelijkField.trim();
-        
         return "Antwoord: " + answerText.trim() + "\n"
-                + "Functieafhankelijk: " + functieafhankelijkText + "\n"
                 + "Bron: " + bronText;
     }
-    private String inferFunctionDependency(String answerText) {
-        Set<String> labels = detectFunctionLabels(answerText);
-        if (labels.isEmpty()) {
-            return "Nee - algemeen beleid.";
-        }
 
-        return "Ja - " + String.join(", ", labels) + ".";
-    }
+        
 private boolean isRelevantCitation(String question, String answerText, String chunkText) {
         if (chunkText == null || chunkText.isBlank()) {
             return false;
