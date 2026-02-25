@@ -49,12 +49,16 @@ public class Huub_Agentless extends JFrame {
         String text;
         List<Double> embedding;
         int page;
-
+        Set<String> functionScope;
+        
         // Slaat per tekstdeel de broninhoud, embedding-vector en paginaverwijzing op.
-        Chunk(String text, List<Double> embedding, int page) {
+        Chunk(String text, List<Double> embedding, int page, Set<String> functionScope) {
             this.text = text;
             this.embedding = embedding;
             this.page = page;
+            this.functionScope = functionScope == null
+                    ? new LinkedHashSet<>()
+                    : new LinkedHashSet<>(functionScope);            
         }
     }
     
@@ -314,17 +318,19 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
 
         PDDocument doc = Loader.loadPDF(new File("personeelsgids.pdf"));
         PDFTextStripper stripper = new PDFTextStripper();
-
+        Set<String> activeFunctionScope = new LinkedHashSet<>();
+        
         for (int page = 1; page <= doc.getNumberOfPages(); page++) {
 
             stripper.setStartPage(page);
             stripper.setEndPage(page);
 
-            String pageText = stripper.getText(doc);
-            List<String> parts = chunkText(pageText, 800);
+            String pageText = stripper.getText(doc);          
+            List<ChunkDraft> drafts = chunkTextWithFunctionScope(pageText, 800, activeFunctionScope);
 
-            for (String part : parts)
-                chunks.add(new Chunk(part, embed(part), page));
+            for (ChunkDraft draft : drafts) {
+                chunks.add(new Chunk(draft.text, embed(draft.text), page, draft.functionScope));
+            }            
         }
 
         doc.close();
@@ -333,7 +339,19 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
             throw new RuntimeException("Geen tekst uit personeelsgids geladen.");
     }
 
-    // Splitst lange tekst op in woordblokken van vaste grootte voor verwerking.
+    static class ChunkDraft {
+        String text;
+        Set<String> functionScope;
+
+        ChunkDraft(String text, Set<String> functionScope) {
+            this.text = text;
+            this.functionScope = functionScope == null
+                    ? new LinkedHashSet<>()
+                    : new LinkedHashSet<>(functionScope);
+        }
+    }    
+
+// Splitst lange tekst op in woordblokken van vaste grootte voor verwerking.
     private static List<String> chunkText(String text, int size) {
 
         List<String> result = new ArrayList<>();
@@ -347,6 +365,106 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         return result;
     }
 
+    private List<ChunkDraft> chunkTextWithFunctionScope(String text, int maxWords, Set<String> activeScope) {
+        List<ChunkDraft> result = new ArrayList<>();
+        if (text == null || text.isBlank()) {
+            return result;
+        }
+
+        StringBuilder buffer = new StringBuilder();
+        int bufferWords = 0;
+        Set<String> bufferScope = new LinkedHashSet<>(activeScope);
+
+        String[] lines = text.split("\\R");
+        for (String rawLine : lines) {
+            String line = rawLine == null ? "" : rawLine.trim();
+            if (line.isEmpty()) {
+                continue;
+            }
+
+            Set<String> headerLabels = detectFunctionHeaderLabels(line);
+            if (!headerLabels.isEmpty()) {
+                if (buffer.length() > 0) {
+                    result.add(new ChunkDraft(buffer.toString().trim(), bufferScope));
+                    buffer.setLength(0);
+                    bufferWords = 0;
+                }
+
+                activeScope.clear();
+                activeScope.addAll(headerLabels);
+                bufferScope = new LinkedHashSet<>(activeScope);
+                continue;
+            }
+
+            int lineWords = countWords(line);
+            if (lineWords == 0) {
+                continue;
+            }
+
+            if (bufferWords + lineWords > maxWords && buffer.length() > 0) {
+                result.add(new ChunkDraft(buffer.toString().trim(), bufferScope));
+                buffer.setLength(0);
+                bufferWords = 0;
+                bufferScope = new LinkedHashSet<>(activeScope);
+            }
+
+            if (buffer.length() > 0) {
+                buffer.append(' ');
+            }
+            buffer.append(line);
+            bufferWords += lineWords;
+        }
+
+        if (buffer.length() > 0) {
+            result.add(new ChunkDraft(buffer.toString().trim(), bufferScope));
+        }
+
+        return result;
+    }
+
+    private int countWords(String text) {
+        if (text == null || text.isBlank()) {
+            return 0;
+        }
+        return text.trim().split("\\s+").length;
+    }
+
+    private Set<String> detectFunctionHeaderLabels(String line) {
+        Set<String> labels = new LinkedHashSet<>();
+        if (line == null || line.isBlank()) {
+            return labels;
+        }
+
+        String normalizedLine = line.toLowerCase(Locale.ROOT)
+                .replaceAll("[^\\p{L}\\p{Nd}]+", " ")
+                .trim();
+
+        if (normalizedLine.length() > 90) {
+            return labels;
+        }
+
+        for (Map.Entry<String, List<String>> profile : FUNCTION_PROFILES.entrySet()) {
+            for (String keyword : profile.getValue()) {
+                String normalizedKeyword = keyword.toLowerCase(Locale.ROOT)
+                        .replaceAll("[^\\p{L}\\p{Nd}]+", " ")
+                        .trim();
+                if (normalizedKeyword.isEmpty()) {
+                    continue;
+                }
+
+                if (normalizedLine.equals(normalizedKeyword)
+                        || normalizedLine.startsWith(normalizedKeyword + " ")
+                        || normalizedLine.endsWith(" " + normalizedKeyword)
+                        || normalizedLine.contains(" " + normalizedKeyword + " ")) {
+                    labels.add(profile.getKey());
+                    break;
+                }
+            }
+        }
+
+        return labels;
+    }
+    
     // Roept de embedding-API aan en retourneert de numerieke vector van de invoertekst.
     private static List<Double> embed(String input) throws Exception {
 
@@ -439,9 +557,6 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
           if (talentclassVraag && !referralVraag && !isTalentclassChunk(candidate)) {
                 continue;
             }
-            if (talentclassVraag && !referralVraag && isBonusQuestion(query) && (candidate.text == null || !candidate.text.toLowerCase(Locale.ROOT).contains("bonus"))) {
-                continue;
-            }
 
 
             if (candidate.text != null && !candidate.text.isBlank() && added.add(candidate)) {
@@ -463,9 +578,6 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
             }
 
             if (talentclassVraag && !referralVraag && !isTalentclassChunk(candidate)) {
-                continue;
-            }
-            if (talentclassVraag && !referralVraag && isBonusQuestion(query) && (candidate.text == null || !candidate.text.toLowerCase(Locale.ROOT).contains("bonus"))) {
                 continue;
             }
 
@@ -522,6 +634,15 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
             return true;
         }
 
+        if (chunk.functionScope != null && !chunk.functionScope.isEmpty()) {
+            for (String label : requiredLabels) {
+                if (chunk.functionScope.contains(label)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        
         Set<String> chunkLabels = detectFunctionLabels(chunk.text);
         if (chunkLabels.isEmpty()) {
             return true;
@@ -598,12 +719,6 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
                 || normalized.contains("tc-consultants");
     }
 
-    private boolean isBonusQuestion(String query) {
-        String normalized = query.toLowerCase(Locale.ROOT);
-        return normalized.contains("bonus")
-                || normalized.contains("kwartaalbonus")
-                || normalized.contains("variabele beloning");
-    }
 
     private boolean isReferralQuestion(String query) {
         String normalized = query.toLowerCase(Locale.ROOT);
@@ -616,47 +731,7 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
                 || normalized.contains("iemand voordraag");
     }
 
-    private Optional<String> buildTalentclassBonusAnswer(String question, List<Chunk> contextChunks) {   
-        if (!isTalentclassQuestion(question) || !isBonusQuestion(question) || isReferralQuestion(question)) {
-            return Optional.empty();
-        }
-
-        for (Chunk chunk : contextChunks) {
-            if (chunk == null || chunk.text == null) {
-                continue;
-            }
-
-            String normalized = chunk.text.toLowerCase(Locale.ROOT);
-            if (!isTalentclassChunk(chunk) || !normalized.contains("bonus")) {
-                continue;
-            }
-
-            if (normalized.matches(".*geen\\s+.{0,35}bonus.*")
-                    || normalized.matches(".*niet\\s+.{0,35}bonus.*")
-                    || normalized.matches(".*zonder\\s+.{0,35}bonus.*")) {
-                return Optional.of(
-                                "Antwoord: Nee, Talentclass Consultants krijgen geen bonus volgens de personeelsgids.\n" +
-                                        "Functieafhankelijk: Ja - Talentclass Consultant.\n" +
-                                        "Bron: PAGINA " + chunk.page + "."
-                );
-            }
-
-            if (normalized.matches(".*krijg.{0,35}bonus.*") || normalized.matches(".*recht\\s+op\\s+.{0,35}bonus.*")) {
-                return Optional.of(
-                                "Antwoord: Ja, volgens de personeelsgids is er een bonusregeling voor Talentclass Consultants.\n" +
-                                        "Functieafhankelijk: Ja - Talentclass Consultant.\n" +
-                                        "Bron: PAGINA " + chunk.page + "."
-                );
-            }
-        }
-
-        return Optional.of(
-                "Antwoord: Ik kan in de Talentclass-context geen expliciete informatie over een bonusregeling vinden.\n" +
-                        "Functieafhankelijk: Ja - Talentclass Consultant.\n" +
-                        "Bron: N.v.t."
-        );
-    }
-      private Optional<String> buildVerzuimDurationAnswer(String question, List<Chunk> contextChunks) {
+    private Optional<String> buildVerzuimDurationAnswer(String question, List<Chunk> contextChunks) {    
         if (question == null || question.isBlank()) {
             return Optional.empty();
         }
@@ -704,14 +779,12 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         if (langdurigVerzuim) {
             return Optional.of(
                     "Antwoord: Ja, als je langer dan twee weken ziek bent, val je onder langdurig verzuim.\n"
-                            + "Functieafhankelijk: Nee - algemeen beleid.\n"
                             + "Bron: " + bron
             );
         }
 
         return Optional.of(
                 "Antwoord: Nee, bij " + totalDays + " dagen ziekte val je nog niet onder langdurig verzuim, omdat dat pas geldt bij meer dan twee weken. Je moet je wel ziek melden volgens de procedures.\n"
-                        + "Functieafhankelijk: Nee - algemeen beleid.\n"
                         + "Bron: " + bron
         );
     }   
@@ -743,7 +816,9 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         StringBuilder contextText = new StringBuilder();
         int sourceId = 1;
         for (Chunk c : topChunks) {
-            Set<String> chunkFunctions = detectFunctionLabels(c.text);
+                Set<String> chunkFunctions = (c.functionScope == null || c.functionScope.isEmpty())
+                    ? detectFunctionLabels(c.text)
+                    : c.functionScope;       
             String functionMarker = chunkFunctions.isEmpty()
                     ? "ALGEMEEN"
                     : String.join(", ", chunkFunctions);            
@@ -765,13 +840,6 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
         if (verzuimDurationAnswer.isPresent()) {
             return verzuimDurationAnswer.get();
         }
-
-
-         Optional<String> talentclassBonusAnswer = buildTalentclassBonusAnswer(question, topChunks);
-        if (talentclassBonusAnswer.isPresent()) {
-            return talentclassBonusAnswer.get();
-        }
-
 
         // 👉 JOUW PROMPT EXACT
         String systemPrompt =
