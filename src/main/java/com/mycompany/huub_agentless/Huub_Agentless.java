@@ -936,6 +936,7 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
 "Als informatie uit de PERSONEELSGIDS wordt gebruikt, moet je: " +
 "- uitsluitend bron-ID's noemen die in de context voorkomen (BRON X), " +
 "- geen paginanummers zelf uitschrijven. " +
+"- splits de bronvermelding met een enter van de rest van het antwoord. " +
 
 "5. Toon: Professioneel en behulpzaam, maar kortaf waar nodig om feitelijkheid te bewaren. " +
 
@@ -1057,38 +1058,18 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
             citedPages.addAll(allCitedPages);
         }
 
-        if (citedPages.size() > 1) {
-            citedPages = pruneIrrelevantPages(citedPages, pageRelevanceScores);
-        }
+
      
         String bronText;
-        double bestPageScore = citedPages.stream()
-                .mapToDouble(p -> pageRelevanceScores.getOrDefault(p, 0.0))
-                .max()
-                .orElse(0.0);
-        boolean lowConfidence = bestPageScore < 0.2 && !citedPages.isEmpty();
+
 
         if (citedPages.isEmpty()) {
-            if (looksLikeNoAnswer(answerText)) {
-                bronText = "N.v.t.";
-            } else {
-                sourceById.values().stream()
-                        .limit(2)
-                        .map(chunk -> chunk.page)
-                        .forEach(citedPages::add);
-                bronText = citedPages.isEmpty()
-                        ? "N.v.t."
-                        : "PAGINA " + citedPages.stream()
-                        .map(String::valueOf)
-                        .collect(Collectors.joining(", PAGINA "));
-            }
+            bronText = "N.v.t.";            
         } else {
             bronText = "PAGINA " + citedPages.stream()
                     .map(String::valueOf)
                     .collect(Collectors.joining(", PAGINA "));
-            if (lowConfidence) {
-                bronText += " (onzeker – controleer bij HR)";
-            }
+
         }
 
         return "Antwoord: " + answerText.trim() + "\n"
@@ -1141,43 +1122,8 @@ private double citationRelevanceScore(String question, String answerText, String
         return lexicalScore;
     }
 
-    private LinkedHashSet<Integer> pruneIrrelevantPages(Set<Integer> citedPages, Map<Integer, Double> pageRelevanceScores) {
-        List<Integer> sortedPages = citedPages.stream()
-                .sorted((a, b) -> Double.compare(
-                        pageRelevanceScores.getOrDefault(b, 0.0),
-                        pageRelevanceScores.getOrDefault(a, 0.0)))
-                .collect(Collectors.toList());
-
-        int bestPage = sortedPages.get(0);
-        double bestScore = pageRelevanceScores.getOrDefault(bestPage, 0.0);
-
-        LinkedHashSet<Integer> prunedPages = new LinkedHashSet<>();
-        prunedPages.add(bestPage);
-
-        for (int i = 1; i < sortedPages.size(); i++) {
-            int page = sortedPages.get(i);
-            double score = pageRelevanceScores.getOrDefault(page, 0.0);
-            // Use ratio check instead of absolute gap (#3): page must score ≥85% of best
-            if (bestScore > 0 && score / bestScore >= 0.85 && score >= 0.15) {
-                prunedPages.add(page);
-            }
-        }
-
-        return prunedPages;
-    }
-
-    private boolean looksLikeNoAnswer(String answerText) {
-        if (answerText == null || answerText.isBlank()) {
-            return true;
-        }
-
-        String normalized = answerText.toLowerCase(Locale.ROOT);
-        return normalized.contains("niet terugvinden")
-                || normalized.contains("niet vinden")
-                || normalized.contains("onvoldoende informatie")
-                || normalized.contains("geen informatie")
-                || normalized.contains("neem contact op met hr");
-    }
+    
+    
 
     private String extractField(String text, String label) {
         if (text == null || label == null) {
