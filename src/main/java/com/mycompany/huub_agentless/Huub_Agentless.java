@@ -10,8 +10,11 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.io.File;
+import java.io.IOException;
+import java.net.SocketTimeoutException;
 import java.util.*;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -24,7 +27,13 @@ public class Huub_Agentless extends JFrame {
     // ==============================
 
     private static final String API_KEY = System.getenv("OPENAI_API_KEY");
-    private static final OkHttpClient CLIENT = new OkHttpClient();
+    private static final OkHttpClient CLIENT = new OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
+            .writeTimeout(120, TimeUnit.SECONDS)
+            .callTimeout(180, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build();  
 
     private static final String PERSONEELSGIDS_VERSIE =
             "Personeelsgids BU Talentclass versie 2024.1"
@@ -205,10 +214,28 @@ public class Huub_Agentless extends JFrame {
                         ? "Onbekende fout (check console)"
                         : ex.getMessage();
 
+                if (isTimeoutException(ex)) {
+                    msg = "timeout bij het ophalen van een antwoord van de AI-service. Probeer het opnieuw.";
+                }
+                
+                String finalMsg = msg;
                 SwingUtilities.invokeLater(() ->
-                        addBubble("Er ging iets mis: " + msg, false));
+                        {
+                            addBubble("Er ging iets mis: " + finalMsg, false);
+                });
             }
         }).start();
+    }
+
+    private boolean isTimeoutException(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof SocketTimeoutException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
    private void startKnowledgeLoading() {
         new Thread(() -> {
@@ -464,6 +491,54 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
 
         return labels;
     }
+
+    private static Response executeWithRetries(Request request, String operationName) throws Exception {
+        final int maxAttempts = 3;
+        long waitMs = 1200;
+
+        IOException lastException = null;
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                Response response = CLIENT.newCall(request).execute();
+
+                if (response.isSuccessful()) {
+                    return response;
+                }
+
+                String responseBody = response.body() != null ? response.body().string() : "";
+                int statusCode = response.code();
+                response.close();
+
+                boolean retryableStatus = statusCode == 408 || statusCode == 429 || statusCode >= 500;
+                if (!retryableStatus || attempt == maxAttempts) {
+                    String suffix = responseBody == null || responseBody.isBlank()
+                            ? ""
+                            : " - " + responseBody;
+                    throw new RuntimeException(operationName + " API error: " + statusCode + suffix);
+                }
+            } catch (SocketTimeoutException e) {
+                lastException = e;
+                if (attempt == maxAttempts) {
+                    throw new RuntimeException(operationName + " timeout na meerdere pogingen.", e);
+                }
+            } catch (IOException e) {
+                lastException = e;
+                if (attempt == maxAttempts) {
+                    throw new RuntimeException(operationName + " netwerkfout na meerdere pogingen.", e);
+                }
+            }
+
+            Thread.sleep(waitMs);
+            waitMs *= 2;
+        }
+
+        if (lastException != null) {
+            throw new RuntimeException(operationName + " fout bij uitvoeren van request.", lastException);
+        }
+
+        throw new RuntimeException(operationName + " kon niet worden uitgevoerd.");
+    }
     
     // Roept de embedding-API aan en retourneert de numerieke vector van de invoertekst.
     private static List<Double> embed(String input) throws Exception {
@@ -480,10 +555,7 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
                         MediaType.parse("application/json")))
                 .build();
 
-        try (Response response = CLIENT.newCall(request).execute()) {
-
-            if (!response.isSuccessful())
-                throw new RuntimeException("Embedding API error: " + response.code());
+        try (Response response = executeWithRetries(request, "Embedding")) {        
 
             JSONObject json = new JSONObject(response.body().string());
 
@@ -917,12 +989,9 @@ bubble.setSize(new Dimension(700, Short.MAX_VALUE));
                 .post(RequestBody.create(body.toString(),
                         MediaType.parse("application/json")))
                 .build();
-
-        try (Response response = CLIENT.newCall(request).execute()) {
-
-            if (!response.isSuccessful())
-                throw new RuntimeException("Chat API error: " + response.code());
-
+        
+        try (Response response = executeWithRetries(request, "Chat")) {
+            
             JSONObject json = new JSONObject(response.body().string());
 
             String answer = json.getJSONArray("choices")
